@@ -28,6 +28,10 @@ class Game:
         self.create_buttons()
         self.game_mode = None  # None, 'normal', 'fischer', or 'two_rooks'
         
+        # Piece selection and valid moves
+        self.selected_piece = None
+        self.valid_moves = []
+        
         # PGN file handling
         self.use_pgn_file = True  # Set this to True to use PGN file
         # Use absolute path to avoid issues with relative paths
@@ -84,6 +88,40 @@ class Game:
                 return True
         return False
 
+    def get_grid_position(self, screen_pos):
+        # Convert screen coordinates to grid coordinates
+        x, y = screen_pos
+        if y >= self.board.height:  # Clicked below the board
+            return None
+        col = x // self.board.square_size
+        row = y // self.board.square_size
+        return (row, col)
+
+    def handle_piece_click(self, pos):
+        grid_pos = self.get_grid_position(pos)
+        if grid_pos is None:
+            return
+
+        row, col = grid_pos
+        clicked_piece = self.board.grid[row][col]
+
+        # If no piece is selected and clicked on a piece of current player's color
+        if self.selected_piece is None and clicked_piece and clicked_piece.color == self.current_turn:
+            self.selected_piece = (row, col)
+            # Get valid moves for the selected piece
+            self.valid_moves = clicked_piece.get_valid_moves(self.board)
+            return
+        if self.selected_piece is not None:
+            if row == self.selected_piece[0] and col == self.selected_piece[1]:
+                self.selected_piece = None
+                self.valid_moves = []   
+                return
+            elif clicked_piece is not None:
+                self.selected_piece = (row, col)
+                # Get valid moves for the selected piece
+                self.valid_moves = clicked_piece.get_valid_moves(self.board)
+                return
+
     def load_pgn_file(self):
         try:
             with open(self.pgn_file_path, 'r') as file:
@@ -113,11 +151,14 @@ class Game:
                 sys.exit()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
-                    if self.game_mode== None and  self.handle_button_click(event.pos):
-                        continue
+                    if self.game_mode is None:
+                        if self.handle_button_click(event.pos):
+                            continue
+                    else:
+                        self.handle_piece_click(event.pos)
             elif event.type == pygame.KEYDOWN:
                 if self.game_mode is None:
-                    continue  # Don't process moves until a game mode is selected
+                    continue
                 if event.key == pygame.K_RETURN:
                     if self.play_move(self.input_text):
                         self.error_message = None
@@ -142,6 +183,7 @@ class Game:
             pygame.display.flip()
             return
         self.board.print_board()
+        self.draw_valid_moves()
         self.draw_input_field()
         pygame.display.flip()
 
@@ -174,6 +216,14 @@ class Game:
             error_surface = self.font.render(self.error_message, True, (255, 0, 0))
             self.screen.blit(error_surface, (325, self.board.height + 30))
 
+    def draw_valid_moves(self):
+        if self.selected_piece is not None:
+            for move in self.valid_moves:
+                # Draw a circle to indicate valid move
+                center_x = move.to_col * self.board.square_size + self.board.square_size // 2
+                center_y = move.to_row * self.board.square_size + self.board.square_size // 2
+                pygame.draw.circle(self.screen, (0, 255, 0, 128), (center_x, center_y), self.board.square_size // 4, 2)
+
     def play_move(self, text_move):
         #Convert row and column to 0-7 range
         file_map = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7}
@@ -182,7 +232,7 @@ class Game:
             # Handle castling
             #We extract were we are castling and give the logic to the board
             if text_move == "O-O":  # Kingside castling
-                rank = 0 if self.current_turn == 'white' else 7
+                rank = 7 if self.current_turn == 'white' else 0
                 king_from = (rank, 4)
                 king_to = (rank, 6)
                 rook_from = (rank, 7)
@@ -194,7 +244,7 @@ class Game:
                 return success
             
             elif text_move == "O-O-O":  # Queenside castling
-                rank = 0 if self.current_turn == 'white' else 7
+                rank = 7 if self.current_turn == 'white' else 0
                 king_from = (rank, 4)
                 king_to = (rank, 2)
                 rook_from = (rank, 0)
@@ -249,11 +299,17 @@ class Game:
 
             # Handle pawn captures (e.g., "exd5") the x is already removed. When the first char is in the file_map we know it is a pawn capture
             elif len(text_move) == 3 and text_move[0] in file_map and is_capture:
-                src_file = file_map[text_move[0]]
+                src_file = None
+                src_rank = None
+                if text_move[0].isalpha():
+                    src_file = file_map[text_move[0]]
+                    src_rank = None
+                else:
+                    src_file = None
+                    src_rank = 8 - int(text_move[0])
                 dest_file = file_map[text_move[1]]
                 dest_rank = 8 - int(text_move[2])
-                
-                success = self.board.move_piece_capture(PieceType.PAWN, (src_file, None), (dest_rank, dest_file), self.current_turn)
+                success = self.board.move_piece_capture(PieceType.PAWN, (src_rank, src_file), (dest_rank, dest_file), self.current_turn)
                 if not success:
                     self.error_message = "Invalid pawn capture"
                 return success
@@ -313,6 +369,23 @@ class Board:
         self.height = height
         self.whiteInCheck = False
         self.blackInCheck = False
+        
+        # Cache for piece images
+        self.piece_images = {}
+        self.load_piece_images()
+
+    def load_piece_images(self):
+        # Load and scale all piece images once
+        piece_types = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king']
+        colors = ['white', 'black']
+        
+        for color in colors:
+            for piece_type in piece_types:
+                pre_string = f"{color}_{piece_type}"
+                image_path = os.path.join(os.path.dirname(__file__), f"Figuren/{pre_string}.png")
+                image = pygame.image.load(image_path)
+                scaled_image = pygame.transform.scale(image, (self.square_size, self.square_size))
+                self.piece_images[pre_string] = scaled_image
 
     def setup_pieces(self):
         #We setup the pieces in the starting position
@@ -574,8 +647,10 @@ class Board:
     #print the game with pygame
     def print_board(self):
         WHITE = (240, 217, 181)
-        PINK = (255, 133, 179)
+        PINK = (255, 166, 201)
         self.screen.fill(WHITE)
+        
+        # Draw board squares
         for row in range(8):
             for col in range(8):
                 if (row + col) % 2 == 0:
@@ -583,20 +658,18 @@ class Board:
                 else:
                     color = (PINK)
                 pygame.draw.rect(self.screen, color, (col * self.square_size, row * self.square_size, self.square_size, self.square_size))
-        # Draw pieces
+        
+        # Draw pieces using cached images
         for row in range(8):
             for col in range(8):
                 piece = self.grid[row][col]
                 if piece:
-                    piece_color = (0, 0, 0) if piece.color == 'black' else (255, 255, 255)
-                    pygame.draw.circle(self.screen, piece_color, (col * self.square_size + self.square_size // 2, row * self.square_size + self.square_size // 2), self.square_size // 3)
-                    # Draw piece type
-                    font_color = (255, 255, 255) if piece.color == 'black' else (0, 0,0)
-                    font = pygame.font.SysFont(None, 24)
-                    text = font.render(piece.type.name, True, font_color)
-                    text_rect = text.get_rect(center=(col * self.square_size + self.square_size // 2, row * self.square_size + self.square_size // 2))
-                    self.screen.blit(text, text_rect)
-        
+                    piece_types = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king']
+                    pre_string = "white_" if piece.color == "white" else "black_"
+                    pre_string = pre_string + piece_types[piece.type.value - 1]
+                    # Use cached image
+                    self.screen.blit(self.piece_images[pre_string], (col * self.square_size, row * self.square_size))
+                        
         # Draw coordinates
         font = pygame.font.SysFont(None, 24)
         
