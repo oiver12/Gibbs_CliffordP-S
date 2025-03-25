@@ -2,6 +2,7 @@ from enum import Enum, auto
 import pygame
 import sys
 import os
+import random
 
 class PieceType(Enum):
     PAWN   = auto()
@@ -357,10 +358,170 @@ class Board:
             self.grid[piece.position[0]][piece.position[1]] = piece
         for piece in black_pieces:
             self.grid[piece.position[0]][piece.position[1]] = piece
+ 
+    # starting position rules: 
+    # pawns are in their usual position
+    # bishops must be on opposite-colored squares
+    # king must be between the two rooks
 
     def setup_fischer_random(self):
-        print("Fischer Random")
-        pass
+        print("Fischer Random")      
+        # set up pawns 
+        black_pieces = [
+            Piece('black', (1, 0), PieceType.PAWN),
+            Piece('black', (1, 1), PieceType.PAWN),
+            Piece('black', (1, 2), PieceType.PAWN),
+            Piece('black', (1, 3), PieceType.PAWN),
+            Piece('black', (1, 4), PieceType.PAWN),
+            Piece('black', (1, 5), PieceType.PAWN),
+            Piece('black', (1, 6), PieceType.PAWN),
+            Piece('black', (1, 7), PieceType.PAWN)
+        ]
+        white_pieces = [
+            Piece('white', (6, 0), PieceType.PAWN),
+            Piece('white', (6, 1), PieceType.PAWN), 
+            Piece('white', (6, 2), PieceType.PAWN),
+            Piece('white', (6, 3), PieceType.PAWN),
+            Piece('white', (6, 4), PieceType.PAWN),
+            Piece('white', (6, 5), PieceType.PAWN),
+            Piece('white', (6, 6), PieceType.PAWN),
+            Piece('white', (6, 7), PieceType.PAWN)
+        ]
+
+        # set up white bank-rank pieces 
+
+        numbers = list(range(8))  # [0, 1, 2, ..., 8]
+
+        # set up bishops 
+        bish_pos = random.randint(0, 7)
+       
+        if bish_pos%2 == 0: # if bishop is on pink
+            bish_pos2 = random.choice([1, 3, 5, 7,])
+        else:
+            bish_pos2 = random.choice([0, 2, 4, 6])
+        
+        white_pieces.append(Piece('white',(7, bish_pos), PieceType.BISHOP))
+        white_pieces.append(Piece('white',(7, bish_pos2), PieceType.BISHOP))
+
+        numbers.remove(bish_pos)
+        numbers.remove(bish_pos2)
+
+        # set rooks 
+        rook_pos = random.choice(numbers)
+        index = numbers.index(rook_pos)
+        numbers.remove(rook_pos)
+        valid_choices = []
+        for i, num in enumerate(numbers):
+             if abs(i - index) > 1:  # not same index, not neighbor
+                 valid_choices.append(num)
+
+        rook_pos2 = random.choice(valid_choices)
+
+        white_pieces.append(Piece('white', (7, rook_pos), PieceType.ROOK))
+        white_pieces.append(Piece('white', (7, rook_pos2), PieceType.ROOK))
+        numbers.remove(rook_pos2)
+    
+        # set king
+        # Determine the lower and upper bounds
+        lower = min(rook_pos, rook_pos2)
+        upper = max(rook_pos, rook_pos2)
+        valid_choices2= [num for num in numbers if lower < num < upper]
+        king_pos = random.choice(valid_choices2)
+
+        white_pieces.append(Piece('white', (7, king_pos), PieceType.KING))
+        numbers.remove(king_pos)
+
+        # set Queen
+        queen_pos = random.choice(numbers)
+
+        white_pieces.append(Piece('white', (7, queen_pos), PieceType.QUEEN))
+        numbers.remove(queen_pos)
+
+        # set knight
+        knight_pos = random.choice(numbers)
+        numbers.remove(knight_pos)
+        knight_pos2 = random.choice(numbers)
+
+        white_pieces.append(Piece('white', (7, knight_pos), PieceType.KNIGHT))
+        white_pieces.append(Piece('white', (7, knight_pos2), PieceType.KNIGHT))
+        
+        numbers.remove(knight_pos2)
+
+
+
+
+
+
+
+        # set up black back-rank pieces
+
+        numbers_black = list(range(8))  # [0, 1, 2, ..., 8]
+
+        # set up bishops
+        bish_pos_black = random.randint(0, 7)
+
+        if bish_pos_black % 2 == 0:  # if bishop is on white
+            bish_pos2_black = random.choice([1, 3, 5, 7])
+        else:
+            bish_pos2_black = random.choice([0, 2, 4, 6])
+
+        black_pieces.append(Piece('black', (0, bish_pos_black), PieceType.BISHOP))
+        black_pieces.append(Piece('black', (0, bish_pos2_black), PieceType.BISHOP))
+
+        numbers_black.remove(bish_pos_black)
+        numbers_black.remove(bish_pos2_black)
+
+        # set rooks
+        rook_pos_black = random.choice(numbers_black)
+        index_black = numbers_black.index(rook_pos_black)
+        numbers_black.remove(rook_pos_black)
+        valid_choices_black = []
+        for i, num in enumerate(numbers_black):
+            if abs(i - index_black) > 1:  # not same index, not neighbor
+                valid_choices_black.append(num)
+
+        rook_pos2_black = random.choice(valid_choices_black)
+
+        black_pieces.append(Piece('black', (0, rook_pos_black), PieceType.ROOK))
+        black_pieces.append(Piece('black', (0, rook_pos2_black), PieceType.ROOK))
+
+        numbers_black.remove(rook_pos2_black)
+
+        # set king
+        lower_black = min(rook_pos_black, rook_pos2_black)
+        upper_black = max(rook_pos_black, rook_pos2_black)
+        valid_choices2_black = [num for num in numbers_black if lower_black < num < upper_black]
+
+        king_pos_black = random.choice(valid_choices2_black)
+
+        black_pieces.append(Piece('black', (0, king_pos_black), PieceType.KING))
+        numbers_black.remove(king_pos_black)
+
+        # set Queen
+        queen_pos_black = random.choice(numbers_black)
+
+        black_pieces.append(Piece('black', (0, queen_pos_black), PieceType.QUEEN))
+        numbers_black.remove(queen_pos_black)
+
+        # set knights
+        knight_pos_black = random.choice(numbers_black)
+        numbers_black.remove(knight_pos_black)
+
+        knight_pos2_black = random.choice(numbers_black)
+        numbers_black.remove(knight_pos2_black)
+
+        black_pieces.append(Piece('black', (0, knight_pos_black), PieceType.KNIGHT))
+        black_pieces.append(Piece('black', (0, knight_pos2_black), PieceType.KNIGHT))
+
+
+        for piece in white_pieces:
+            self.grid[piece.position[0]][piece.position[1]] = piece
+        for piece in black_pieces:
+            self.grid[piece.position[0]][piece.position[1]] = piece
+
+
+
+
     def setup_two_rooks(self):
         pass
     def move_piece(self, piece_type: PieceType, from_pos: tuple[int | None, int | None], to_pos: tuple[int, int], current_turn: str) -> bool:
