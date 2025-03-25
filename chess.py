@@ -23,8 +23,13 @@ class Game:
         self.font_small = pygame.font.SysFont(None, 24)
         self.error_message = None
         
+        # Game mode buttons
+        self.buttons = []
+        self.create_buttons()
+        self.game_mode = None  # None, 'normal', 'fischer', or 'two_rooks'
+        
         # PGN file handling
-        self.use_pgn_file = False  # Set this to True to use PGN file
+        self.use_pgn_file = True  # Set this to True to use PGN file
         # Use absolute path to avoid issues with relative paths
         self.pgn_file_path = os.path.join(os.path.dirname(__file__), "game.pgn")  # Set your PGN file path here
         self.pgn_moves = []
@@ -32,6 +37,52 @@ class Game:
         
         if self.use_pgn_file:
             self.load_pgn_file()
+
+    def create_buttons(self):
+        button_width = 150
+        button_height = 40
+        spacing = 20
+        total_width = (button_width * 3) + (spacing * 2)
+        start_x = (self.board.width - total_width) // 2
+        
+        # Create three buttons
+        self.buttons = [
+            pygame.Rect(start_x, self.board.height + 10, button_width, button_height),
+            pygame.Rect(start_x + button_width + spacing, self.board.height + 10, button_width, button_height),
+            pygame.Rect(start_x + (button_width + spacing) * 2, self.board.height + 10, button_width, button_height)
+        ]
+        
+        # Button text
+        self.button_texts = ["Aufgabe 1", "Aufgabe 2", "Aufgabe 3"]
+        self.button_font = pygame.font.SysFont(None, 28)
+
+    def draw_buttons(self):
+        for i, button in enumerate(self.buttons):
+            # Draw button background
+            pygame.draw.rect(self.screen, (200, 200, 200), button)
+            pygame.draw.rect(self.screen, (100, 100, 100), button, 2)
+            
+            # Draw button text
+            text = self.button_font.render(self.button_texts[i], True, (0, 0, 0))
+            text_rect = text.get_rect(center=button.center)
+            self.screen.blit(text, text_rect)
+
+    def handle_button_click(self, pos):
+        for i, button in enumerate(self.buttons):
+            if button.collidepoint(pos):
+                if i == 0:  # Aufgabe 1 - Normal Chess
+                    self.game_mode = 'normal'
+                    self.board.setup_pieces()  # Reset to normal starting position
+                elif i == 1:  # Aufgabe 2 - Fischer Random
+                    self.game_mode = 'fischer'
+                    print("Fischer Random")
+                    self.board.setup_fischer_random()
+                elif i == 2:  # Aufgabe 3 - Two Rooks vs Two Pawns
+                    self.game_mode = 'two_rooks'
+                    print("Two Rooks vs Two Pawns")
+                    self.board.setup_two_rooks()
+                return True
+        return False
 
     def load_pgn_file(self):
         try:
@@ -60,15 +111,19 @@ class Game:
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left click
+                    if self.game_mode== None and  self.handle_button_click(event.pos):
+                        continue
             elif event.type == pygame.KEYDOWN:
+                if self.game_mode is None:
+                    continue  # Don't process moves until a game mode is selected
                 if event.key == pygame.K_RETURN:
                     if self.play_move(self.input_text):
                         self.error_message = None
-                        # Switch turns after a valid move
                         self.current_turn = 'black' if self.current_turn == 'white' else 'white'
                         self.board.print_board()
                         
-                        # If using PGN file, load next move
                         if self.use_pgn_file:
                             if not self.load_next_move():
                                 self.error_message = "End of PGN file reached"
@@ -78,10 +133,14 @@ class Game:
                     self.input_text = self.input_text[:-1]
                     self.error_message = None
                 else:
-                    if not self.use_pgn_file and len(self.input_text) < 4:  # Only allow input if not using PGN file
+                    if not self.use_pgn_file and len(self.input_text) < 4:
                         self.input_text += event.unicode
                         self.error_message = None
-
+        if self.game_mode is None:
+            self.screen.fill((255, 255, 255))
+            self.draw_buttons()
+            pygame.display.flip()
+            return
         self.board.print_board()
         self.draw_input_field()
         pygame.display.flip()
@@ -248,14 +307,12 @@ class Game:
 class Board:
     def __init__(self, width, height, screen):
         self.grid = [[None for _ in range(8)] for _ in range(8)]
-        self.setup_pieces()
         self.square_size = width // 8
         self.screen = screen
         self.width = width
         self.height = height
         self.whiteInCheck = False
         self.blackInCheck = False
-
 
     def setup_pieces(self):
         #We setup the pieces in the starting position
@@ -301,6 +358,11 @@ class Board:
         for piece in black_pieces:
             self.grid[piece.position[0]][piece.position[1]] = piece
 
+    def setup_fischer_random(self):
+        print("Fischer Random")
+        pass
+    def setup_two_rooks(self):
+        pass
     def move_piece(self, piece_type: PieceType, from_pos: tuple[int | None, int | None], to_pos: tuple[int, int], current_turn: str) -> bool:
         # Find all pieces that match the type and position constraints
         candidate_pieces = []
@@ -673,6 +735,8 @@ class Piece:
                     elif board.grid[new_row][new_col].color != self.color:
                         valid_moves.append(Move(col, row, new_col, new_row, True))
         return valid_moves
+    
+
 if __name__ == "__main__":
     pygame.init()
     game = Game()
