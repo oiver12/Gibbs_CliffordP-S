@@ -95,7 +95,7 @@ class Game:
         self.valid_moves = []
         
         # PGN file handling
-        self.use_pgn_file = False  # Set this to True to use PGN file
+        self.use_pgn_file = True  # Set this to True to use PGN file
         # Use absolute path to avoid issues with relative paths
         self.pgn_file_path = os.path.join(os.path.dirname(__file__), "game.pgn")  # Set your PGN file path here
         self.pgn_moves = []
@@ -447,6 +447,7 @@ class Game:
                 self.pgn_moves = [move for move in moves if not move.endswith('.') and not move.startswith('$')]
                 if self.pgn_moves:
                     self.input_text = self.pgn_moves[0]
+                print(self.pgn_moves)
         except FileNotFoundError:
             self.error_message = f"PGN file not found: {self.pgn_file_path}"
         except Exception as e:
