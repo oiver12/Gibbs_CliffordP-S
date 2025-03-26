@@ -34,7 +34,7 @@ class Game:
         self.valid_moves = []
         
         # PGN file handling
-        self.use_pgn_file = True  # Set this to True to use PGN file
+        self.use_pgn_file = False  # Set this to True to use PGN file
         # Use absolute path to avoid issues with relative paths
         self.pgn_file_path = os.path.join(os.path.dirname(__file__), "game.pgn")  # Set your PGN file path here
         self.pgn_moves = []
@@ -77,13 +77,16 @@ class Game:
             if button.collidepoint(pos):
                 if i == 0:  # Aufgabe 1 - Normal Chess
                     self.game_mode = 'normal'
+                    self.board.game_mode = 'normal'
                     self.board.setup_pieces()  # Reset to normal starting position
                 elif i == 1:  # Aufgabe 2 - Fischer Random
                     self.game_mode = 'fischer'
+                    self.board.game_mode = 'fischer'
                     print("Fischer Random")
                     self.board.setup_fischer_random()
                 elif i == 2:  # Aufgabe 3 - Two Rooks vs Two Pawns
                     self.game_mode = 'two_rooks'
+                    self.board.game_mode = 'two_rooks'
                     print("Two Rooks vs Two Pawns")
                     self.board.setup_two_rooks()
                 return True
@@ -175,7 +178,7 @@ class Game:
                     self.input_text = self.input_text[:-1]
                     self.error_message = None
                 else:
-                    if not self.use_pgn_file and len(self.input_text) < 4:
+                    if not self.use_pgn_file and len(self.input_text) < 6:
                         self.input_text += event.unicode
                         self.error_message = None
         if self.game_mode is None:
@@ -228,34 +231,100 @@ class Game:
     def play_move(self, text_move):
         #Convert row and column to 0-7 range
         file_map = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7}
-    
+        success = False  # We'll set this True if we successfully do a move.
         try:
-            # Handle castling
-            #We extract were we are castling and give the logic to the board
+            # 1) Handle castling
             if text_move == "O-O":  # Kingside castling
                 rank = 7 if self.current_turn == 'white' else 0
-                king_from = (rank, 4)
-                king_to = (rank, 6)
-                rook_from = (rank, 7)
-                rook_to = (rank, 5)
-                
-                success = self.board.castle(king_from, king_to, rook_from, rook_to, self.current_turn)
+                color = self.current_turn
+                king_to = (rank, 6)  # g1/g8
+                rook_to = (rank, 5)  # f1/f8
+
+                # Find the king
+                king_pos = None
+                for col in range(8):
+                    piece = self.board.grid[rank][col]
+                    if piece and piece.type == PieceType.KING and piece.color == color:
+                        king_pos = (rank, col)
+                        break
+
+                # Find the rook to the right of the king
+                rook_pos = None
+                if king_pos:
+                    for col in range(king_pos[1] + 1, 8):
+                        piece = self.board.grid[rank][col]
+                        if piece and piece.type == PieceType.ROOK and piece.color == color:
+                            rook_pos = (rank, col)
+                            break
+
+                # Attempt castling if we found king and rook
+                if king_pos and rook_pos:
+                    success = self.board.castle(
+                        king_from=king_pos,
+                        king_to=king_to,
+                        rook_from=rook_pos,
+                        rook_to=rook_to,
+                        current_turn=self.current_turn
+                    )
+
                 if not success:
                     self.error_message = "Invalid castling move"
+                    return  False# or you could raise an exception, or handle differently
                 return success
-            
+
             elif text_move == "O-O-O":  # Queenside castling
                 rank = 7 if self.current_turn == 'white' else 0
-                king_from = (rank, 4)
-                king_to = (rank, 2)
-                rook_from = (rank, 0)
-                rook_to = (rank, 3)
-                
-                success = self.board.castle(king_from, king_to, rook_from, rook_to, self.current_turn)
+                color = self.current_turn
+                king_to = (rank, 2)  # c1/c8
+                rook_to = (rank, 3)  # d1/d8
+
+                # Find the king
+                king_pos = None
+                for col in range(8):
+                    piece = self.board.grid[rank][col]
+                    if piece and piece.type == PieceType.KING and piece.color == color:
+                        king_pos = (rank, col)
+                        break
+
+                # Find the rook to the left of the king
+                rook_pos = None
+                if king_pos:
+                    for col in range(king_pos[1] - 1, -1, -1):
+                        piece = self.board.grid[rank][col]
+                        if piece and piece.type == PieceType.ROOK and piece.color == color:
+                            rook_pos = (rank, col)
+                            break
+
+                # Attempt castling if we found king and rook
+                if king_pos and rook_pos:
+                    success = self.board.castle(
+                        king_from=king_pos,
+                        king_to=king_to,
+                        rook_from=rook_pos,
+                        rook_to=rook_to,
+                        current_turn=self.current_turn
+                    )
+
                 if not success:
                     self.error_message = "Invalid castling move"
-                return success
-            
+                    return False
+                return True
+
+            # 2) If it's not a castling move, handle normal moves here.
+            else:
+                # parse something like "e2e4", call your regular move function, etc.
+                # If that move succeeds, set success = True
+                pass
+
+            # 3) If we reach here, we either castled successfully or did a normal move.
+            #    You can do additional steps, like toggling self.current_turn from white <-> black.
+            if success:
+                self.current_turn = 'black' if self.current_turn == 'white' else 'white'
+            else:
+                # Possibly handle normal moves or print some error message for invalid normal move
+                pass
+
+
             #We save if there is a check or checkmate and at the end we check if there is a check or checkmate on our side
             is_check = '+' in text_move
             is_checkmate = '#' in text_move
@@ -353,6 +422,7 @@ class Game:
                 else:
                     self.error_message = "Invalid piece notation"
                     return False
+
             #If the move is not handled by the above, it is invalid
             self.error_message = "Invalid move format"
             return False
@@ -360,6 +430,7 @@ class Game:
         except (KeyError, ValueError, IndexError):
             self.error_message = "Invalid move syntax"
             return False
+
 
 class Board:
     def __init__(self, width, height, screen):
@@ -370,6 +441,7 @@ class Board:
         self.height = height
         self.whiteInCheck = False
         self.blackInCheck = False
+        self.game_mode = None
         
         # Cache for piece images
         self.piece_images = {}
@@ -461,7 +533,7 @@ class Board:
             Piece('white', (6, 7), PieceType.PAWN)
         ]
 
-        # set up white bank-rank pieces 
+        # set up white & black bank-rank pieces 
 
         numbers = list(range(8))  # [0, 1, 2, ..., 8]
 
@@ -475,6 +547,8 @@ class Board:
         
         white_pieces.append(Piece('white',(7, bish_pos), PieceType.BISHOP))
         white_pieces.append(Piece('white',(7, bish_pos2), PieceType.BISHOP))
+        black_pieces.append(Piece('black',(0, bish_pos), PieceType.BISHOP))
+        black_pieces.append(Piece('black',(0, bish_pos2), PieceType.BISHOP))
 
         numbers.remove(bish_pos)
         numbers.remove(bish_pos2)
@@ -492,6 +566,8 @@ class Board:
 
         white_pieces.append(Piece('white', (7, rook_pos), PieceType.ROOK))
         white_pieces.append(Piece('white', (7, rook_pos2), PieceType.ROOK))
+        black_pieces.append(Piece('black', (0, rook_pos), PieceType.ROOK))
+        black_pieces.append(Piece('black', (0, rook_pos2), PieceType.ROOK))
         numbers.remove(rook_pos2)
     
         # set king
@@ -502,12 +578,14 @@ class Board:
         king_pos = random.choice(valid_choices2)
 
         white_pieces.append(Piece('white', (7, king_pos), PieceType.KING))
+        black_pieces.append(Piece('black', (0, king_pos), PieceType.KING))
         numbers.remove(king_pos)
 
         # set Queen
         queen_pos = random.choice(numbers)
 
         white_pieces.append(Piece('white', (7, queen_pos), PieceType.QUEEN))
+        black_pieces.append(Piece('black', (0, queen_pos), PieceType.QUEEN))
         numbers.remove(queen_pos)
 
         # set knight
@@ -517,74 +595,10 @@ class Board:
 
         white_pieces.append(Piece('white', (7, knight_pos), PieceType.KNIGHT))
         white_pieces.append(Piece('white', (7, knight_pos2), PieceType.KNIGHT))
+        black_pieces.append(Piece('black', (0, knight_pos), PieceType.KNIGHT))
+        black_pieces.append(Piece('black', (0, knight_pos2), PieceType.KNIGHT))
         
         numbers.remove(knight_pos2)
-
-
-
-
-
-
-
-        # set up black back-rank pieces
-
-        numbers_black = list(range(8))  # [0, 1, 2, ..., 8]
-
-        # set up bishops
-        bish_pos_black = random.randint(0, 7)
-
-        if bish_pos_black % 2 == 0:  # if bishop is on white
-            bish_pos2_black = random.choice([1, 3, 5, 7])
-        else:
-            bish_pos2_black = random.choice([0, 2, 4, 6])
-
-        black_pieces.append(Piece('black', (0, bish_pos_black), PieceType.BISHOP))
-        black_pieces.append(Piece('black', (0, bish_pos2_black), PieceType.BISHOP))
-
-        numbers_black.remove(bish_pos_black)
-        numbers_black.remove(bish_pos2_black)
-
-        # set rooks
-        rook_pos_black = random.choice(numbers_black)
-        index_black = numbers_black.index(rook_pos_black)
-        numbers_black.remove(rook_pos_black)
-        valid_choices_black = []
-        for i, num in enumerate(numbers_black):
-            if abs(i - index_black) > 1:  # not same index, not neighbor
-                valid_choices_black.append(num)
-
-        rook_pos2_black = random.choice(valid_choices_black)
-
-        black_pieces.append(Piece('black', (0, rook_pos_black), PieceType.ROOK))
-        black_pieces.append(Piece('black', (0, rook_pos2_black), PieceType.ROOK))
-
-        numbers_black.remove(rook_pos2_black)
-
-        # set king
-        lower_black = min(rook_pos_black, rook_pos2_black)
-        upper_black = max(rook_pos_black, rook_pos2_black)
-        valid_choices2_black = [num for num in numbers_black if lower_black < num < upper_black]
-
-        king_pos_black = random.choice(valid_choices2_black)
-
-        black_pieces.append(Piece('black', (0, king_pos_black), PieceType.KING))
-        numbers_black.remove(king_pos_black)
-
-        # set Queen
-        queen_pos_black = random.choice(numbers_black)
-
-        black_pieces.append(Piece('black', (0, queen_pos_black), PieceType.QUEEN))
-        numbers_black.remove(queen_pos_black)
-
-        # set knights
-        knight_pos_black = random.choice(numbers_black)
-        numbers_black.remove(knight_pos_black)
-
-        knight_pos2_black = random.choice(numbers_black)
-        numbers_black.remove(knight_pos2_black)
-
-        black_pieces.append(Piece('black', (0, knight_pos_black), PieceType.KNIGHT))
-        black_pieces.append(Piece('black', (0, knight_pos2_black), PieceType.KNIGHT))
 
 
         for piece in white_pieces:
@@ -609,7 +623,7 @@ class Board:
                     piece.color == current_turn and  # Make sure it's the current player's piece
                     (from_pos[0] is None or from_pos[0] == row) and  # Match rank if specified
                     (from_pos[1] is None or from_pos[1] == col)):    # Match file if specified
-                    
+
                     # Check if this piece can actually move to the target
                     valid_moves = piece.get_valid_moves(self)
                     for move in valid_moves:
@@ -666,55 +680,66 @@ class Board:
         
         return False
 
-    def castle(self, king_from: tuple[int, int], king_to: tuple[int, int], rook_from: tuple[int, int], rook_to: tuple[int, int], current_turn: str) -> bool:
-         # Check if king and rook are in the correct positions
+    def castle(self, king_from: tuple[int, int], king_to: tuple[int, int],
+            rook_from: tuple[int, int], rook_to: tuple[int, int],
+            current_turn: str) -> bool:
+        # Retrieve the king and rook from the board.
         king = self.grid[king_from[0]][king_from[1]]
         rook = self.grid[rook_from[0]][rook_from[1]]
-        #We check if the king and rook are in the correct positions
-        if not king or king.type != PieceType.KING or not rook or rook.type != PieceType.ROOK:
+
+        # 1) Verify that the pieces are correct.
+        if not king or king.type != PieceType.KING:
             return False
-        
-        # Check the path is clear between king and rook
-        if king_to[1] > king_from[1]:  # Kingside castle
-            path_range = range(king_from[1] + 1, rook_from[1])
-        else:  # Queenside castle
-            path_range = range(rook_from[1] + 1, king_from[1])
-        
-        for col in path_range:
-            if self.grid[king_from[0]][col] is not None:
-                return False
-        
-        # Check that the king is not currently in check
-        if current_turn == 'white' and self.whiteInCheck:
+        if not rook or rook.type != PieceType.ROOK:
             return False
-        elif current_turn == 'black' and self.blackInCheck:
-            return False
-        
-        #Check if king and rook have not moved yet
+
+        # 2) Check if they have moved before.
         if king.has_moved or rook.has_moved:
             return False
 
-        # Check that the squares the king passes through aren't under attack
-        if king_to[1] > king_from[1]:  # Kingside
-            for col in [king_from[1] + 1, king_from[1] + 2]:
-                if self.is_square_under_attack(king.color, king_from[0], col):
-                    return False
-        else:  # Queenside
-            for col in [king_from[1] - 1, king_from[1] - 2]:
-                if self.is_square_under_attack(king.color, king_from[0], col):
-                    return False
-        
-        # Perform the castle
+        # 3) They must be on the same row (no vertical castling).
+        if king_from[0] != rook_from[0]:
+            return False
+        row = king_from[0]
+
+        # 4) Ensure all squares between the king and rook are empty (except king/rook).
+        #    We only check the *strictly* in-between squares.
+        col_start = min(king_from[1], rook_from[1]) + 1
+        col_end = max(king_from[1], rook_from[1])
+        for col in range(col_start, col_end):
+            if self.grid[row][col] is not None:
+                return False
+
+        # 5) Ensure the king is not currently in check.
+        if (current_turn == 'white' and self.whiteInCheck) or \
+        (current_turn == 'black' and self.blackInCheck):
+            return False
+
+        # 6) Check that none of the squares the king passes through (including destination)
+        #    are under attack.
+        step = 1 if king_to[1] > king_from[1] else -1
+        for col in range(king_from[1] + step, king_to[1] + step, step):
+            if self.is_square_under_attack(king.color, row, col):
+                return False
+
+        # 7) Ensure the final squares (king_to, rook_to) are empty
+        #    (Castling cannot capture any piece, whether friendly or enemy.)
+        if self.grid[king_to[0]][king_to[1]] is not None:
+            return False
+        if self.grid[rook_to[0]][rook_to[1]] is not None:
+            return False
+
+        # --- If we reach here, castling is valid. Perform the move. ---
         self.grid[king_to[0]][king_to[1]] = king
         self.grid[king_from[0]][king_from[1]] = None
         king.position = king_to
         king.has_moved = True
-        
+
         self.grid[rook_to[0]][rook_to[1]] = rook
         self.grid[rook_from[0]][rook_from[1]] = None
         rook.position = rook_to
         rook.has_moved = True
-        
+
         return True
 
     def promote_pawn(self, piece_type: PieceType, pos: tuple[int, int]) -> bool:
