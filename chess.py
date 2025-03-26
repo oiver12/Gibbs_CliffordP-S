@@ -12,11 +12,58 @@ class PieceType(Enum):
     QUEEN  = auto()
     KING   = auto()
 
+
+class Clock:
+    def __init__(self, minutes, increment=0):
+        self.minutes = minutes
+        self.increment = increment
+        self.white_time = minutes * 60  # Convert to seconds
+        self.black_time = minutes * 60
+        self.is_running = False
+        self.current_player = 'white'
+
+    def start_clock(self):
+        self.is_running = True
+
+    def stop_clock(self):
+        self.is_running = False
+    
+    def update_clock(self, delta_time):
+        delta_time = delta_time / 1000
+        if self.is_running:
+            if self.current_player == 'white':
+                self.white_time -= delta_time
+            else:
+                self.black_time -= delta_time
+
+    def switch_player(self):
+        if self.current_player == 'white':
+            self.white_time += self.increment
+            self.current_player = 'black'
+        else:
+            self.black_time += self.increment
+            self.current_player = 'white'        
+        
+
+    def get_time_string(self, time_in_seconds):
+        time_in_seconds = int(time_in_seconds)
+        minutes = time_in_seconds // 60
+        seconds = time_in_seconds % 60
+        return f"{minutes:02d}:{seconds:02d}"
+
+    def get_white_time_string(self):
+        return self.get_time_string(self.white_time)
+
+    def get_black_time_string(self):
+        return self.get_time_string(self.black_time)
+
 class Game:
     def __init__(self):
+        #Width and height of the board
         width = 640 
         height = 640 
-        self.screen = pygame.display.set_mode((width, height+60))
+        #Width (board + buttons(clock+resign etc) and height (board + buttons)
+        self.screen = pygame.display.set_mode((width+200, height+60))
         self.board = Board(width, height, self.screen)
         self.current_turn = 'white'
         self.input_text = ""
@@ -26,8 +73,22 @@ class Game:
         
         # Game mode buttons
         self.buttons = []
-        self.create_buttons()
-        self.game_mode = None  # None, 'normal', 'fischer', or 'two_rooks'
+        self.create_startSelectButtons()
+        self.game_mode = None  # None, 'normal', 'fischer', or 'two_rooks' or 'done'
+        self.game_result = None # None, 'white_win', 'black_win', 'draw'
+        
+        # Clock settings
+        self.use_clock = False
+        self.clock = None
+        self.clock_options = [
+            ("3+2", Clock(3, 2)),
+            ("5+0", Clock(5, 0)),
+            ("10+0", Clock(10, 0)),
+            ("15+10", Clock(15, 10))
+        ]
+        self.clock_buttons = []
+        self.sideBarButtons = []
+        self.create_sideBarButtons()
         
         # Piece selection and valid moves
         self.selected_piece = None
@@ -39,11 +100,17 @@ class Game:
         self.pgn_file_path = os.path.join(os.path.dirname(__file__), "game.pgn")  # Set your PGN file path here
         self.pgn_moves = []
         self.current_move_index = 0
+        self.whiteWantsDraw = False
+        self.blackWantsDraw = False
+
+        self.gameMoves = []
+        self.save_game_button = pygame.Rect(840/2 - 120/2, 840/2 + 90, 120, 40)
         
         if self.use_pgn_file:
             self.load_pgn_file()
 
-    def create_buttons(self):
+    #Create the buttons for the start screen on which you can select the game mode
+    def create_startSelectButtons(self):
         button_width = 150
         button_height = 40
         spacing = 20
@@ -61,7 +128,126 @@ class Game:
         self.button_texts = ["Aufgabe 1", "Aufgabe 2", "Aufgabe 3"]
         self.button_font = pygame.font.SysFont(None, 28)
 
-    def draw_buttons(self):
+    #Create the buttons for the clock options
+    def create_sideBarButtons(self):
+        button_width = 100
+        button_height = 30
+        spacing = 20
+        start_x = 160
+        
+        # Create clock option buttons
+        for i in range(4):
+            self.clock_buttons.append(
+                pygame.Rect(
+                    start_x + (button_width + spacing) * i,
+                    95,
+                    button_width,
+                    button_height
+                )
+            )
+        self.sideBarButtons.append(pygame.Rect(self.board.width + 35, 330, 130, 30))
+        self.sideBarButtons.append(pygame.Rect(self.board.width + 35, 380, 130,30))
+        self.sideBarButtons.append(pygame.Rect(self.board.width + 35, 530, 130, 30))
+        self.sideBarButtons.append(pygame.Rect(self.board.width + 35, 580, 130, 30))
+
+
+    #Draw the sidebar on the right with the following information:
+    #- Clock
+    #- Resign button
+    #- Draw button
+    #- Draw offer button
+    #- Draw offer accept button
+    #- Draw offer decline button
+    def draw_sidebar(self):
+        #Draw the clock first
+        if self.use_clock and self.game_mode in ['normal', 'fischer'] and self.clock is not None:
+            # Define clock dimensions and position
+            clock_width = 180
+            clock_height = 200
+            clock_x = self.board.width + 10
+            clock_y = 10
+            
+            # Draw clock background
+            clock_bg = pygame.Rect(clock_x, clock_y, clock_width, clock_height)
+            pygame.draw.rect(self.screen, (240, 240, 240), clock_bg)
+            pygame.draw.rect(self.screen, (200, 200, 200), clock_bg, 2)
+            
+            # Draw title
+            title = self.font_small.render("Chess Clock", True, (50, 50, 50))
+            title_rect = title.get_rect(center=(clock_x + clock_width//2, clock_y + 20))
+            self.screen.blit(title, title_rect)
+            
+            # Draw white player's time
+            white_bg = pygame.Rect(clock_x + 10, clock_y + 40, clock_width - 20, 70)
+            pygame.draw.rect(self.screen, (255, 255, 255), white_bg)
+            pygame.draw.rect(self.screen, (200, 200, 200), white_bg, 2)
+            
+            white_label = self.font_small.render("White", True, (50, 50, 50))
+            white_label_rect = white_label.get_rect(center=(clock_x + clock_width//2, clock_y + 55))
+            self.screen.blit(white_label, white_label_rect)
+            
+            white_time = self.font.render(self.clock.get_white_time_string(), True, (0, 0, 0))
+            white_time_rect = white_time.get_rect(center=(clock_x + clock_width//2, clock_y + 85))
+            self.screen.blit(white_time, white_time_rect)
+            
+            # Draw black player's time
+            black_bg = pygame.Rect(clock_x + 10, clock_y + 120, clock_width - 20, 70)
+            pygame.draw.rect(self.screen, (255, 255, 255), black_bg)
+            pygame.draw.rect(self.screen, (200, 200, 200), black_bg, 2)
+            
+            black_label = self.font_small.render("Black", True, (50, 50, 50))
+            black_label_rect = black_label.get_rect(center=(clock_x + clock_width//2, clock_y + 135))
+            self.screen.blit(black_label, black_label_rect)
+            
+            black_time = self.font.render(self.clock.get_black_time_string(), True, (0, 0, 0))
+            black_time_rect = black_time.get_rect(center=(clock_x + clock_width//2, clock_y + 165))
+            self.screen.blit(black_time, black_time_rect)
+            
+            # Highlight current player's time
+            if self.current_turn == 'white':
+                pygame.draw.rect(self.screen, (100, 255, 100), white_bg, 3)
+            else:
+                pygame.draw.rect(self.screen, (100, 255, 100), black_bg, 3)
+
+        #Draw the buttons for the sidebar
+        blackTitle = self.font.render("Black", True, (0, 0, 0))
+        whiteTitle = self.font.render("White", True, (0, 0, 0))
+        whiteTitleRect = whiteTitle.get_rect(center=(self.board.width + 100, 300))
+        blackTitleRect = blackTitle.get_rect(center=(self.board.width + 100, 500))
+        self.screen.blit(blackTitle, blackTitleRect)
+        self.screen.blit(whiteTitle, whiteTitleRect)
+
+        whiteText = "Request Draw" if not self.blackWantsDraw else "Accept Draw"
+        whiteTextRect = self.font_small.render(whiteText, True, (0, 0, 0))
+        whiteDrawButton = self.sideBarButtons[0]
+        pygame.draw.rect(self.screen, (220, 220, 220), whiteDrawButton)
+        pygame.draw.rect(self.screen, (100, 100, 100), whiteDrawButton, 2)
+        whiteTextPos = whiteTextRect.get_rect(center=whiteDrawButton.center)
+        self.screen.blit(whiteTextRect, whiteTextPos)
+        whiteTextRect = self.font_small.render("Resign", True, (0, 0, 0))
+        whiteResignButton = self.sideBarButtons[1]
+        pygame.draw.rect(self.screen, (220, 220, 220), whiteResignButton)
+        pygame.draw.rect(self.screen, (100, 100, 100), whiteResignButton, 2)
+        whiteTextPos = whiteTextRect.get_rect(center=whiteResignButton.center)
+        self.screen.blit(whiteTextRect, whiteTextPos)
+
+        blackText = "Request Draw" if not self.whiteWantsDraw else "Accept Draw"
+        blackTextRect = self.font_small.render(blackText, True, (0, 0, 0))
+        blackDrawButton = self.sideBarButtons[2]
+        pygame.draw.rect(self.screen, (220, 220, 220), blackDrawButton)
+        pygame.draw.rect(self.screen, (100, 100, 100), blackDrawButton, 2)
+        blackTextPos = blackTextRect.get_rect(center=blackDrawButton.center)
+        self.screen.blit(blackTextRect, blackTextPos)
+        blackTextRect = self.font_small.render("Resign", True, (0, 0, 0))
+        blackResignButton = self.sideBarButtons[3]
+        pygame.draw.rect(self.screen, (220, 220, 220), blackResignButton)
+        pygame.draw.rect(self.screen, (100, 100, 100), blackResignButton, 2)
+        blackTextPos = blackTextRect.get_rect(center=blackResignButton.center)
+        self.screen.blit(blackTextRect, blackTextPos)
+         
+    
+    #Draw the buttons for the start screen for selecting the game mode
+    def draw_startSelectButtons(self):
         for i, button in enumerate(self.buttons):
             # Draw button background
             pygame.draw.rect(self.screen, (200, 200, 200), button)
@@ -72,24 +258,143 @@ class Game:
             text_rect = text.get_rect(center=button.center)
             self.screen.blit(text, text_rect)
 
+    #Draw the settings for the clock and the pgn file on the start screen
+    def draw_settings_beg(self):
+        # Draw clock checkbox
+        checkbox_rect = pygame.Rect(10, 50, 20, 20)
+        pygame.draw.rect(self.screen, (200, 200, 200), checkbox_rect)
+        pygame.draw.rect(self.screen, (100, 100, 100), checkbox_rect, 2)
+        
+        #When clock is enabled we draw the checkbox checked
+        if self.use_clock:
+            pygame.draw.rect(self.screen, (0, 0, 0), checkbox_rect)
+            
+        # Draw "Use Clock" text
+        text = self.font_small.render("Use Clock", True, (0, 0, 0))
+        self.screen.blit(text, (35, 53))
+        
+        # Draw clock options if clock is enabled
+        if self.use_clock:
+            text = self.font_small.render("Clock Options:", True, (0, 0, 0))
+            self.screen.blit(text, (10, 100))
+            for i, (text, _) in enumerate(self.clock_options):
+                button = self.clock_buttons[i]
+                pygame.draw.rect(self.screen, (200, 200, 200), button)
+                pygame.draw.rect(self.screen, (100, 100, 100), button, 2)
+                if self.clock == self.clock_options[i][1]:
+                    pygame.draw.rect(self.screen, (100, 100, 100), button, 5)
+                
+                text_surface = self.font_small.render(text, True, (0, 0, 0))
+                text_rect = text_surface.get_rect(center=button.center)
+                self.screen.blit(text_surface, text_rect)
+
+        # PGN File Option
+        checkbox_enablepgn = pygame.Rect(10, 300, 20, 20)
+        # Draw checkbox background
+        pygame.draw.rect(self.screen, (200, 200, 200), checkbox_enablepgn)
+        pygame.draw.rect(self.screen, (100, 100, 100), checkbox_enablepgn, 2)
+        
+        # Fill checkbox if enabled
+        if self.use_pgn_file:
+            # Draw checkmark inside
+            pygame.draw.rect(self.screen, (0, 0, 0), checkbox_enablepgn.inflate(-8, -8))
+        
+        text = self.font_small.render("Use PGN File", True, (0, 0, 0))
+        self.screen.blit(text, (40, checkbox_enablepgn.centery - text.get_height() // 2))
+        
+        # Show PGN file path if enabled
+        if self.use_pgn_file:
+            # Create a rounded rectangle for the file path display
+            path_rect = pygame.Rect(35, 330, 400, 25)
+            pygame.draw.rect(self.screen, (230, 230, 230), path_rect, border_radius=5)
+            pygame.draw.rect(self.screen, (150, 150, 150), path_rect, 1, border_radius=5)
+            
+            # Display only the last folder and filename
+            pgn_path = self.pgn_file_path
+            parts = pgn_path.replace('\\', '/').split('/')
+            if len(parts) > 1:
+                pgn_path = parts[-2] + '/' + parts[-1]
+            else:
+                pgn_path = parts[-1]
+            
+            pgn_text = "PGN File: " + pgn_path
+            text = self.font_small.render(pgn_text, True, (50, 50, 50))
+            self.screen.blit(text, (path_rect.x + 10, path_rect.centery - text.get_height() // 2))
+
+    def handle_sidebar_click(self, pos):
+        if self.sideBarButtons[0].collidepoint(pos):
+            if self.blackWantsDraw:
+                self.check_game_result(force_draw=True)
+            else:
+                self.whiteWantsDraw = not self.whiteWantsDraw
+        elif self.sideBarButtons[2].collidepoint(pos):
+            if self.whiteWantsDraw:
+                self.check_game_result(force_draw=True)
+            else:
+                self.blackWantsDraw = not self.blackWantsDraw
+        elif self.sideBarButtons[1].collidepoint(pos):
+            self.check_game_result(force_black_win=True)
+        elif self.sideBarButtons[3].collidepoint(pos):
+            self.check_game_result(force_white_win=True)
+
+    #Handle the click on the game mode buttons
     def handle_button_click(self, pos):
         for i, button in enumerate(self.buttons):
             if button.collidepoint(pos):
                 if i == 0:  # Aufgabe 1 - Normal Chess
                     self.game_mode = 'normal'
                     self.board.setup_pieces()  # Reset to normal starting position
+                    if self.use_clock and self.clock is not None:
+                        self.clock.start_clock()
+                        self.last_update = pygame.time.get_ticks()
                 elif i == 1:  # Aufgabe 2 - Fischer Random
                     self.game_mode = 'fischer'
                     print("Fischer Random")
                     self.board.setup_fischer_random()
+                    if self.use_clock and self.clock is not None:
+                        self.clock.start_clock()
+                        self.last_update = pygame.time.get_ticks()
                 elif i == 2:  # Aufgabe 3 - Two Rooks vs Two Pawns
                     self.game_mode = 'two_rooks'
                     print("Two Rooks vs Two Pawns")
                     self.board.setup_two_rooks()
+                    if self.use_clock and self.clock is not None:
+                        self.clock.start_clock()
+                        self.last_update = pygame.time.get_ticks()
                 return True
         return False
 
+    #Handle the click on the settings for the clock and the pgn file on the start screen
+    def handle_settings_click(self, pos):
+        # Check if clock checkbox was clicked
+        checkbox_rect = pygame.Rect(10, 50, 20, 20)
+        if checkbox_rect.collidepoint(pos):
+            self.use_clock = not self.use_clock
+            if not self.use_clock:
+                self.clock = None
+            return True
+        
+        # Check if clock options were clicked
+        if self.use_clock:
+            for i, button in enumerate(self.clock_buttons):
+                if button.collidepoint(pos):
+                    self.clock = self.clock_options[i][1]
+                    return True
+
+                    
+        # Check if PGN file checkbox was clicked
+        checkbox_enablepgn = pygame.Rect(10, 300, 20, 20)
+        if checkbox_enablepgn.collidepoint(pos):
+            self.use_pgn_file = not self.use_pgn_file
+            return True
+        
+        return False
+
+    #Get the grid index when clicking on the board so you can select pieces
     def get_grid_position(self, screen_pos):
+        #Check if the click is on the sidebar
+        if screen_pos[0] >= self.board.width or screen_pos[1] >= self.board.height:
+            return None
         # Convert screen coordinates to grid coordinates
         x, y = screen_pos
         if y >= self.board.height:  # Clicked below the board
@@ -98,6 +403,7 @@ class Game:
         row = y // self.board.square_size
         return (row, col)
 
+    #Handle the click on a piece so you can see valid moves from this piece
     def handle_piece_click(self, pos):
         grid_pos = self.get_grid_position(pos)
         if grid_pos is None:
@@ -123,6 +429,11 @@ class Game:
                 self.valid_moves = clicked_piece.get_valid_moves(self.board)
                 return
 
+    def handle_save_game_click(self, pos):
+        if self.save_game_button.collidepoint(pos):
+            self.save_game()
+
+    #Load the pgn file form the file system and load all valid moves
     def load_pgn_file(self):
         try:
             with open(self.pgn_file_path, 'r') as file:
@@ -130,7 +441,7 @@ class Game:
                 # Split the content into moves
                 moves = content.split()
                 # Remove move numbers (e.g., "1.", "2.", etc.)
-                self.pgn_moves = [move for move in moves if not move.endswith('.')]
+                self.pgn_moves = [move for move in moves if not move.endswith('.') and not move.startswith('$')]
                 if self.pgn_moves:
                     self.input_text = self.pgn_moves[0]
         except FileNotFoundError:
@@ -138,6 +449,7 @@ class Game:
         except Exception as e:
             self.error_message = f"Error loading PGN file: {str(e)}"
 
+    #Load the next move from the pgn file which was loaded before
     def load_next_move(self):
         if self.current_move_index < len(self.pgn_moves) - 1:
             self.current_move_index += 1
@@ -145,49 +457,17 @@ class Game:
             return True
         return False
 
-    def update(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Left click
-                    if self.game_mode is None:
-                        if self.handle_button_click(event.pos):
-                            continue
-                    else:
-                        self.handle_piece_click(event.pos)
-            elif event.type == pygame.KEYDOWN:
-                if self.game_mode is None:
-                    continue
-                if event.key == pygame.K_RETURN:
-                    if self.play_move(self.input_text):
-                        self.error_message = None
-                        self.current_turn = 'black' if self.current_turn == 'white' else 'white'
-                        self.board.print_board()
-                        
-                        if self.use_pgn_file:
-                            if not self.load_next_move():
-                                self.error_message = "End of PGN file reached"
-                        else:
-                            self.input_text = ""
-                elif event.key == pygame.K_BACKSPACE:
-                    self.input_text = self.input_text[:-1]
-                    self.error_message = None
+    def save_game(self):
+        counter = 0
+        with open('game_moves.txt', 'w') as file:
+            for move in self.gameMoves:
+                if counter % 2 == 0:
+                    file.write(str(counter // 2 + 1) + '. ' + move + ' ')
                 else:
-                    if not self.use_pgn_file and len(self.input_text) < 4:
-                        self.input_text += event.unicode
-                        self.error_message = None
-        if self.game_mode is None:
-            self.screen.fill((255, 255, 255))
-            self.draw_buttons()
-            pygame.display.flip()
-            return
-        self.board.print_board()
-        self.draw_valid_moves()
-        self.draw_input_field()
-        pygame.display.flip()
+                    file.write(move + ' ')
+                counter += 1
 
+    #Draw the input field for the move entered by the user
     def draw_input_field(self):
         input_rect = pygame.Rect(0, self.board.height+20, self.board.width, 40)
         pygame.draw.rect(self.screen, (255, 255, 255), input_rect)
@@ -217,6 +497,7 @@ class Game:
             error_surface = self.font.render(self.error_message, True, (255, 0, 0))
             self.screen.blit(error_surface, (325, self.board.height + 30))
 
+    #Draw the valid moves when clicked on a piece
     def draw_valid_moves(self):
         if self.selected_piece is not None:
             for move in self.valid_moves:
@@ -225,6 +506,124 @@ class Game:
                 center_y = move.to_row * self.board.square_size + self.board.square_size // 2
                 pygame.draw.circle(self.screen, (0, 255, 0, 128), (center_x, center_y), self.board.square_size // 4, 2)
 
+    #Draw the game result
+    def draw_game_result(self):
+        self.screen.fill((255, 255, 255))
+        
+        # Render "Game Over" text
+        game_over_text = self.font.render("Game Over", True, (0, 0, 0))
+        game_over_rect = game_over_text.get_rect(center=(840/2, 840/2 - 30))
+        self.screen.blit(game_over_text, game_over_rect)
+        
+        # Render game result text
+        result_text = self.font.render(self.game_result, True, (0, 0, 0))
+        result_rect = result_text.get_rect(center=(840/2, 840/2 + 30))
+        self.screen.blit(result_text, result_rect)
+
+        # Render the save game button below the game result
+        pygame.draw.rect(self.screen, (220, 220, 220), self.save_game_button)
+        pygame.draw.rect(self.screen, (0, 0, 0), self.save_game_button, 2)
+        save_game_text = self.font.render("Save Game", True, (0, 0, 0))
+        save_text_rect = save_game_text.get_rect(center=self.save_game_button.center)
+        self.screen.blit(save_game_text, save_text_rect)
+
+    #MAIN LOOP OF THE GAME in this loop we handle all events and update the game
+    def update(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left click
+                    if self.game_mode is None:
+                        if self.handle_button_click(event.pos):
+                            continue
+                        if self.handle_settings_click(event.pos):
+                            continue
+                    else:
+                        self.handle_piece_click(event.pos)
+                        self.handle_sidebar_click(event.pos)
+                        self.handle_save_game_click(event.pos)
+            elif event.type == pygame.KEYDOWN:
+                if self.game_mode is None:
+                    continue
+                if event.key == pygame.K_RETURN:
+                    if self.play_move(self.input_text):
+                        self.gameMoves.append(self.input_text)
+                        self.error_message = None
+                        self.current_turn = 'black' if self.current_turn == 'white' else 'white'
+                        self.board.print_board()
+                        self.check_game_result()
+                        if self.use_clock and self.clock is not None:
+                            self.clock.switch_player()
+                        
+                        if self.use_pgn_file:
+                            if not self.load_next_move():
+                                self.error_message = "End of PGN file reached"
+                        else:
+                            self.input_text = ""
+                elif event.key == pygame.K_BACKSPACE:
+                    self.input_text = self.input_text[:-1]
+                    self.error_message = None
+                else:
+                    if not self.use_pgn_file and len(self.input_text) < 4:
+                        self.input_text += event.unicode
+                        self.error_message = None
+        if self.game_mode is None:
+            self.screen.fill((255, 255, 255))
+            self.draw_startSelectButtons()
+            self.draw_settings_beg()
+            pygame.display.flip()
+            return
+        if self.game_mode == 'done':
+            self.screen.fill((255, 255, 255))
+            self.draw_game_result()
+            pygame.display.flip()
+            return
+        self.board.print_board()
+        self.draw_sidebar()
+        if self.use_clock and self.clock is not None:
+            self.clock.update_clock(pygame.time.get_ticks() - self.last_update)
+            self.last_update = pygame.time.get_ticks()
+        self.draw_valid_moves()
+        self.draw_input_field()
+        pygame.display.flip()
+
+    #Check the game result, this is called when a move is played or when a button is clicked
+    def check_game_result(self, force_draw=False, force_white_win=False, force_black_win=False):
+        if force_draw:
+            self.game_mode = 'done'
+            self.game_result = 'draw'
+            return True
+        if force_white_win:
+            self.game_mode = 'done'
+            self.game_result = 'white_win'
+            return True
+        if force_black_win:
+            self.game_mode = 'done'
+            self.game_result = 'black_win'
+            return True
+        if self.use_clock and self.clock is not None:
+            if self.clock.white_time <= 0:
+                self.game_mode = 'done'
+                self.game_result = 'black_win'
+                return True
+            if self.clock.black_time <= 0:
+                self.game_mode = 'done'
+                self.game_result = 'white_win'
+                return True
+        if self.board.is_checkmate('white'):
+            self.game_mode = 'done'
+            self.game_result = 'black_win'
+            return True
+        if self.board.is_checkmate('black'):
+            self.game_mode = 'done'
+            self.game_result = 'white_win'
+            return True
+        return False
+
+    #Parse move entered by the user in standard chess notation and play it with the board functions,
+    #Give error messages if the move is invalid
     def play_move(self, text_move):
         #Convert row and column to 0-7 range
         file_map = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7}
@@ -363,7 +762,7 @@ class Game:
 
 class Board:
     def __init__(self, width, height, screen):
-        self.grid = [[None for _ in range(8)] for _ in range(8)]
+        self.grid: list[list[Piece | None]] = [[None for _ in range(8)] for _ in range(8)]
         self.square_size = width // 8
         self.screen = screen
         self.width = width
@@ -624,6 +1023,12 @@ class Board:
             self.grid[move.to_row][move.to_col] = piece
             self.grid[move.from_row][move.from_col] = None
             piece.position = (move.to_row, move.to_col)
+            #if we moved a piece and we are in check, we undo the move
+            if self.is_check(piece.color):
+                self.grid[move.to_row][move.to_col] = None
+                self.grid[move.from_row][move.from_col] = piece
+                piece.position = (move.from_row, move.from_col)
+                return False
             piece.has_moved = True
             return True
         
@@ -656,10 +1061,16 @@ class Board:
         # If there's exactly one candidate, make the move
         if len(candidate_pieces) == 1:
             piece, move = candidate_pieces[0]
-            
+            piece_before = self.grid[move.to_row][move.to_col]
             # Make the move
             self.grid[move.to_row][move.to_col] = piece
             self.grid[move.from_row][move.from_col] = None
+            #if we moved a piece and we are in check, we undo the move
+            if self.is_check(piece.color):
+                self.grid[move.to_row][move.to_col] = piece_before
+                self.grid[move.from_row][move.from_col] = piece
+                piece.position = (move.from_row, move.from_col)
+                return False
             piece.position = (move.to_row, move.to_col)
             piece.has_moved = True
             return True
@@ -731,9 +1142,19 @@ class Board:
         piece.type = piece_type
         return True
 
+    def get_king_position(self, color: str) -> tuple[int, int] | None:
+        for row in range(8):
+            for col in range(8):
+                piece = self.grid[row][col]
+                if piece and piece.type == PieceType.KING and piece.color == color:
+                    return (row, col)
+        return None
+
     #Checks if the king is in check of the given color
     def is_check(self, color: str) -> bool:
-        king = None
+        king = self.get_king_position(color)
+        if not king:
+            return False
         opponent_color = 'black' if color == 'white' else 'white'
         for row in range(8):
             for col in range(8):
@@ -741,21 +1162,13 @@ class Board:
                 if piece and piece.color == opponent_color:
                     valid_moves = piece.get_valid_moves(self)
                     for move in valid_moves:
-                        if move.to_row == king.position[0] and move.to_col == king.position[1]:
+                        if move.to_row == king[0] and move.to_col == king[1]:
                             return True
         return False
                     
     #Checks if the king is in checkmate of the given color
     def is_checkmate(self, color: str) -> bool:
-        king_pos = None
-        for row in range(8):
-            for col in range(8):
-                piece = self.grid[row][col]
-                if piece and piece.type == PieceType.KING and piece.color == color:
-                    king_pos = (row, col)
-                    break
-        
-        #When there is no king of the given color we return False this should not happen
+        king_pos = self.get_king_position(color)
         if not king_pos:
             return False
         
@@ -765,9 +1178,8 @@ class Board:
         for row in range(8):
             for col in range(8):
                 piece = self.grid[row][col]
-                if piece and piece.color == color and piece.type == PieceType.KING:
+                if piece and piece.color == color:
                     valid_moves = piece.get_valid_moves(self)
-                    #Get all the moves of our king and check if any of them get him out of check
                     for move in valid_moves:
                         #Try to do the move and check if it is a check
                         original_piece = self.grid[move.to_row][move.to_col]
@@ -775,18 +1187,16 @@ class Board:
                         self.grid[move.from_row][move.from_col] = None
                         old_position = piece.position
                         piece.position = (move.to_row, move.to_col)
-                        
-                        # Check if king is still in check
-                        still_in_check = self.is_check(color)
-                        
-                        # Undo the move
+                        if not self.is_check(color):
+                            self.grid[move.from_row][move.from_col] = piece
+                            self.grid[move.to_row][move.to_col] = original_piece
+                            piece.position = old_position
+                            return False
+                        #Undo the move
                         self.grid[move.from_row][move.from_col] = piece
                         self.grid[move.to_row][move.to_col] = original_piece
                         piece.position = old_position
                         
-                        if not still_in_check:
-                            return False  # Found a move that gets out of check
-
         return True
 
     #Checks if a square is under attack by any piece of the opposite color. we need this to see if we can castle
@@ -885,6 +1295,7 @@ class Piece:
                     if target and target.color == opponent_color:
                         valid_moves.append(Move(col, row, capture_col, row + direction, True))
             #TODO: En passant
+
         elif self.type == PieceType.KNIGHT:
              # Knights move in L-shape
             moves = [
