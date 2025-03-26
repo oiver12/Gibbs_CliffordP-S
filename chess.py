@@ -841,7 +841,7 @@ class Board:
         self.height = height
         self.whiteInCheck = False
         self.blackInCheck = False
-        self.game_mode = None
+        self.game_mode: str | None = None
         
         # Cache for piece images
         self.piece_images = {}
@@ -1010,7 +1010,39 @@ class Board:
 
 
     def setup_two_rooks(self):
-        pass
+        # Place white king (must not be in check)
+        while True:
+            wk_row, wk_col = random.randint(0, 7), random.randint(0, 7)
+            # King ssollte nicht bei der Edge
+            if 1 <= wk_row <= 6 and 1 <= wk_col <= 6:
+                break
+        
+        # Place black king (must not attack white king and not adjacent)
+        while True:
+            bk_row, bk_col = random.randint(0, 7), random.randint(0, 7)
+            # Check distance between kings (must be at least 1 square apart)
+            if (abs(wk_row - bk_row) > 1 or abs(wk_col - bk_col) > 1):
+                # Also make sure black king isn't in check by potential rook
+                break
+        
+        # Place white rook 
+        while True:
+            wr_row, wr_col = random.randint(0, 7), random.randint(0, 7)
+            # Rook kann nicht bei den Kings sein 
+            if (wr_row, wr_col) != (wk_row, wk_col) and (wr_row, wr_col) != (bk_row, bk_col):
+                
+                if wr_row != bk_row and wr_col != bk_col:
+                    break
+        
+        # Place the pieces
+        self.grid[wk_row][wk_col] = Piece('white', (wk_row, wk_col), PieceType.KING)
+        self.grid[wr_row][wr_col] = Piece('white', (wr_row, wr_col), PieceType.ROOK)
+        self.grid[bk_row][bk_col] = Piece('black', (bk_row, bk_col), PieceType.KING)
+        
+        # Verify the position is valid (no checks)
+        if self.is_check('black') or self.is_check('white'):
+            # If invalid, try again recursively (should rarely happen)
+            return self.setup_two_rooks()
     def move_piece(self, piece_type: PieceType, from_pos: tuple[int | None, int | None], to_pos: tuple[int, int], current_turn: str) -> bool:
         # Find all pieces that match the type and position constraints
         candidate_pieces = []
