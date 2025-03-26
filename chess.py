@@ -78,7 +78,7 @@ class Game:
         self.game_result = None # None, 'white_win', 'black_win', 'draw'
         
         # Clock settings
-        self.use_clock = False
+        self.use_clock = True
         self.clock = None
         self.clock_options = [
             ("3+2", Clock(3, 2)),
@@ -95,7 +95,7 @@ class Game:
         self.valid_moves = []
         
         # PGN file handling
-        self.use_pgn_file = True  # Set this to True to use PGN file
+        self.use_pgn_file = False  # Set this to True to use PGN file
         # Use absolute path to avoid issues with relative paths
         self.pgn_file_path = os.path.join(os.path.dirname(__file__), "game.pgn")  # Set your PGN file path here
         self.pgn_moves = []
@@ -341,6 +341,12 @@ class Game:
     def handle_button_click(self, pos):
         for i, button in enumerate(self.buttons):
             if button.collidepoint(pos):
+                self.input_text = ""
+                if self.use_pgn_file:
+                    self.current_move_index = 0
+                    self.input_text = self.pgn_moves[self.current_move_index]
+                if self.use_clock and self.clock is None:
+                    self.use_clock = False
                 if i == 0:  # Aufgabe 1 - Normal Chess
                     self.game_mode = 'normal'
                     self.board.game_mode = 'normal'
@@ -570,7 +576,7 @@ class Game:
                     self.input_text = self.input_text[:-1]
                     self.error_message = None
                 else:
-                    if not self.use_pgn_file and len(self.input_text) < 4:
+                    if not self.use_pgn_file and len(self.input_text) < 9:
                         self.input_text += event.unicode
                         self.error_message = None
         if self.game_mode is None:
@@ -780,6 +786,10 @@ class Game:
                 dest_file = file_map[text_move[1]]
                 dest_rank = 8 - int(text_move[2])
                 success = self.board.move_piece_capture(PieceType.PAWN, (src_rank, src_file), (dest_rank, dest_file), self.current_turn)
+                if success and promotion_type:
+                    success = self.board.promote_pawn(promotion_type, (dest_rank, dest_file))
+                    if not success:
+                        self.error_message = "Invalid pawn promotion"
                 if not success:
                     self.error_message = "Invalid pawn capture"
                 return success
@@ -1043,6 +1053,7 @@ class Board:
         if self.is_check('black') or self.is_check('white'):
             # If invalid, try again recursively (should rarely happen)
             return self.setup_two_rooks()
+
     def move_piece(self, piece_type: PieceType, from_pos: tuple[int | None, int | None], to_pos: tuple[int, int], current_turn: str) -> bool:
         # Find all pieces that match the type and position constraints
         candidate_pieces = []
@@ -1065,7 +1076,8 @@ class Board:
         # If there's exactly one candidate, make the move
         if len(candidate_pieces) == 1:
             piece, move = candidate_pieces[0]
-            
+            if piece.type == PieceType.PAWN and piece.has_moved == False and (move.to_row == 3 or move.to_row == 4):
+                piece.pawn_has_moved_two_squares_last_turn = True
             # Make the move
             self.grid[move.to_row][move.to_col] = piece
             self.grid[move.from_row][move.from_col] = None
@@ -1084,7 +1096,6 @@ class Board:
     def move_piece_capture(self, piece_type: PieceType, from_pos: tuple[int | None, int | None], to_pos: tuple[int, int], current_turn: str) -> bool:
         if piece_type == PieceType.PAWN:
             print(from_pos, to_pos)
-        print("PAWN-----")
         candidate_pieces = []
         
         for row in range(8):
@@ -1109,6 +1120,8 @@ class Board:
         if len(candidate_pieces) == 1:
             piece, move = candidate_pieces[0]
             piece_before = self.grid[move.to_row][move.to_col]
+            if move.is_enPassant:
+                self.grid[move.from_row][move.to_col] = None
             # Make the move
             self.grid[move.to_row][move.to_col] = piece
             self.grid[move.from_row][move.from_col] = None
@@ -1193,7 +1206,7 @@ class Board:
             return False
         
         # Check that the pawn is at the last rank
-        if (piece.color == 'white' and pos[0] != 7) or (piece.color == 'black' and pos[0] != 0):
+        if (piece.color == 'white' and pos[0] != 0) or (piece.color == 'black' and pos[0] != 7):
             return False
         
         # Promote the pawn
@@ -1318,12 +1331,13 @@ class Board:
 
 #This class is used to store the move when we get the valid moves
 class Move:
-    def __init__(self, from_col, from_row, to_col, to_row, is_capture):
+    def __init__(self, from_col, from_row, to_col, to_row, is_capture, is_enPassant=False):
         self.from_col = from_col
         self.from_row = from_row
         self.to_col = to_col
         self.to_row = to_row
         self.is_capture = is_capture
+        self.is_enPassant = is_enPassant
 
 class Piece:
     def __init__(self, color, position, type):
@@ -1331,6 +1345,8 @@ class Piece:
         self.position = position
         self.type = type
         self.has_moved = False
+        self.pawn_has_moved_two_squares_last_turn = False
+
     def get_valid_moves(self, board) -> list[Move]:
         valid_moves = []  # List of tuples (row, col, is_capture)
         row, col = self.position
@@ -1352,7 +1368,12 @@ class Piece:
                     target = board.grid[row + direction][capture_col]
                     if target and target.color == opponent_color:
                         valid_moves.append(Move(col, row, capture_col, row + direction, True))
-            #TODO: En passant
+
+            #En passant
+            if col-1 >= 0 and board.grid[row][col-1] is not None and board.grid[row][col-1].type == PieceType.PAWN and board.grid[row][col-1].pawn_has_moved_two_squares_last_turn == True:
+                valid_moves.append(Move(col, row, col-1, row + direction, True, True))
+            if col+1 < 8 and board.grid[row][col+1] is not None and board.grid[row][col+1].type == PieceType.PAWN and board.grid[row][col+1].pawn_has_moved_two_squares_last_turn == True:
+                valid_moves.append(Move(col, row, col+1, row + direction, True, True))
 
         elif self.type == PieceType.KNIGHT:
              # Knights move in L-shape

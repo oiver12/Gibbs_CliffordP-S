@@ -1,5 +1,14 @@
 # Chess Program Documentation
 
+## Members
+This project is made by:
+- Liv Richter
+  - Has implemented Chess960 and castling
+- Bhavya Sharma
+  - Has implemented the rook+king vs king mode
+- Oliver Baumgartner
+  - Has implemented the game logic, drawing and standard chess mode
+
 ## Presentation
 ### Start Screen
 When opening the game you can choose between the different modes we had to implement:
@@ -10,12 +19,21 @@ When opening the game you can choose between the different modes we had to imple
 You cann choose these options with the three buttons on bottom.
 You can also set:
 - Clock for during the game. Here you have different modes (time (m) + increment (s)). 
-- You can choose to load a game from a pgn file in standard chess notation. For that please refer to the example game in "game.pgn". When this option is selected it automatically sets these inputs.
+- You can choose to load a game from a pgn file in standard chess notation. For that please refer to the example game in "game.pgn". When this options is selected you can't manually enter moves. All moves are automically loaded from the file and you can press enter to play the next move. The file "game.pgn" contains a difficult match, which the game handles perfectly.
 ![Start Screen](media/startScreen.png)
 
 ### Game
-![Game Screen](media/inGame.png)
+#### Normal Mode
 when the game is loaded you can make a move by just starting to write on your keyboard. You will see the move written in the bottom. **But in case you use a PGN File** you can just press enter and the moves are loaded one by one. On the right side you see the clock, which automatically increments when the player changes. You can always request a draw or resign.
+![Game Screen](media/inGame.png)
+
+#### Chess960
+You can also choose to play the two other modes. The logic for handling the game is simmilar here. But the starting positon in Chess960 is choosen random according to the rules. Also castling is handled specialy because you have to look at more special cases.
+![Game Screen Chess 960](media/inGame_chess960.png)
+
+### Rook+King vs King endgame
+In the endgame Rook+King vs King mode, you can play the moves of black and the computer moves white. The computer will checkmate you in 50 moves. This algorithm is implemented with the "Box Method"
+![Game Screen endgame](media/inGame_rkk.png)
 
 ### End Screen
 When a checkmate is detected or a draw is agreed on, the end screen is loaded. Here you can see the winner and save the game to a textfile. It will generate a textfile in which all the moves are written in standard chess notation. This will be saved on your computer.
@@ -25,11 +43,10 @@ When a checkmate is detected or a draw is agreed on, the end screen is loaded. H
 
 This chess program uses the following Python libraries:
 - `pygame`: For the graphical user interface
-- `random`: For random number generation, e.g. for fischer random chess
 
 ### Installation
 
-1. Ensure you have Python 3.6 or higher installed
+1. Ensure you have Python 3.10 or higher installed
 2. Install the required external library:
    ```
    pip install pygame
@@ -127,9 +144,16 @@ The chess program follows a detailed control flow for processing moves:
    - The clock is switched if enabled
    - The next move from a PGN file is loaded if using file playback
 
-### Advanced Features
-- The program supports Fischer Random Chess (Chess960) with randomized starting positions
-- There's a special mode with rooks vs pawns
-- PGN file support for loading and replaying games
-- Built-in timer functionality
-- Move validation that enforces all standard chess rules 
+## 4. Sources and References
+
+The implementation of this chess program was informed by several resources:
+
+### Chess Rules and Algorithms
+- Basic chess rules and notation: [FIDE Laws of Chess](https://www.fide.com/FIDE/handbook/LawsOfChess.pdf)
+- Chess960 (Fischer Random) rules: [Chess960 Official Rules](https://www.chess.com/article/view/chess960-fischer-random-explained)
+- Rook + King vs King endgame: [Chess Stack Exchange](https://chess.stackexchange.com/questions/8647/end-game-king-an-rook-beginners?utm_source=chatgpt.com)
+- Chess standard notattion: [Chess.com](https://www.chess.com/terms/chess-notation)
+
+### Programming Resources
+- Pygame documentation for GUI implementation: [Pygame Documentation](https://www.pygame.org/docs/)
+- We used generative AI (ChatGPT) for our project
