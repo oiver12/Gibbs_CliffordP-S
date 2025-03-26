@@ -3,6 +3,7 @@ import pygame
 import sys
 import os
 import random
+import math
 
 class PieceType(Enum):
     PAWN   = auto()
@@ -537,6 +538,121 @@ class Game:
         save_text_rect = save_game_text.get_rect(center=self.save_game_button.center)
         self.screen.blit(save_game_text, save_text_rect)
 
+    def two_rooks_algorithm(self):
+
+        # Helper: Manhattan distance between two positions.
+        def manhattan_distance(p1, p2):
+            return abs(p1[0] - p2[0]) + abs(p1[1] - p2[1])
+
+        # Helper: From a piece's valid moves, choose the move whose destination is
+        # closest (Manhattan distance) to the intended target.
+        def select_move(piece, intended_target, board):
+            valid_moves = piece.get_valid_moves(board)
+            if not valid_moves:
+                return None
+            best_move = None
+            best_distance = math.inf
+            for move in valid_moves:
+                # Destination of move as (row, col)
+                dest = (move.to_row, move.to_col)
+                d = manhattan_distance(dest, intended_target)
+                if d < best_distance:
+                    best_distance = d
+                    best_move = move
+            return best_move
+        
+        # Helper: Execute a move using board.move_piece and then update the repetition history.
+        def execute_move(piece_type, from_pos, to_pos, color):
+            success = self.board.move_piece(piece_type, from_pos, to_pos, color)
+            if success:
+                # Obtain a representation of the current board position.
+                pos_repr = self.board.get_position_representation()  # This must return a unique string.
+                # Initialize position_history if not already done.
+                if not hasattr(self, 'position_history'):
+                    self.position_history = {}
+                self.position_history[pos_repr] = self.position_history.get(pos_repr, 0) + 1
+                if self.position_history[pos_repr] >= 3:
+                    print("Threefold repetition detected. Declaring draw.")
+                    self.game_mode = 'done'
+                    self.game_result = 'draw'
+            return success
+
+
+        white_king = None
+        white_rook = None
+        black_king = None
+        for row in range(8):
+            for col in range(8):
+                piece = self.board.grid[row][col]
+                if piece and piece.type == PieceType.KING:
+                    if piece.color == 'white':
+                        white_king = piece
+                    else:
+                        black_king = piece
+                if piece and piece.type == PieceType.ROOK:
+                    white_rook = piece
+
+        if not white_king or not white_rook or not black_king:
+            print("Error piece not found")
+            return
+        
+        # Get current positions (row, col) for each piece.
+        # Rows are 0-based with row 0 corresponding to rank 8 and row 7 to rank 1.
+        wk_r, wk_c = white_king.position
+        wr_r, wr_c = white_rook.position
+        bk_r, bk_c = black_king.position
+
+        # Compute how far the black king is from an edge in each direction.
+        dist_row = min(bk_r, 7 - bk_r)
+        dist_col = min(bk_c, 7 - bk_c)
+
+         # Decide which axis to restrict: if black king is further from an edge vertically, use a horizontal cutoff.
+        if dist_row >= dist_col:
+            # We'll restrict vertically by moving the rook to an edge row.
+            # Choose target row: if black king is in the upper half, aim for the top (row 0, rank 8);
+            # otherwise, aim for the bottom (row 7, rank 1).
+            target_r = 0 if bk_r <= 3 else 7
+            # Intended rook target is to move it to (target_r, current rook column)
+            intended_rook_target = (target_r, wr_c)
+            
+              
+            # If the rook is not already on that row, move it there.
+            if wr_r != target_r:
+                # Rook moves: Keep its current column.
+                chosen_move = select_move(white_rook, intended_rook_target, self.board)
+                if chosen_move is not None:
+                    return execute_move(white_rook.type, white_rook.position, 
+                            (chosen_move.to_row, chosen_move.to_col), 'white')
+             # Otherwise, if the rook is in place, move the king one square closer.
+            intended_king_target = (wk_r + (1 if bk_r > wk_r else -1 if bk_r < wk_r else 0),
+                                    wk_c + (1 if bk_c > wk_c else -1 if bk_c < wk_c else 0))
+            chosen_move = select_move(white_king, intended_king_target, self.board)
+            if chosen_move is not None:
+                return execute_move(white_king.type, white_king.position,
+                        (chosen_move.to_row, chosen_move.to_col), 'white')
+    
+        else:
+            # We'll restrict horizontally by moving the rook to an edge column.
+            # Choose target column: if black king is in the left half, aim for column 0 ('a'); otherwise, column 7 ('h').
+            target_c = 0 if bk_c <= 3 else 7
+            intended_rook_target = (wr_r, target_c)
+            if wr_c != target_c:
+                # Move the rook vertically: Keep its current row.
+                chosen_move = select_move(white_rook, intended_rook_target, self.board)
+                if chosen_move is not None:
+                    return execute_move(white_rook.type, white_rook.position, 
+                            (chosen_move.to_row, chosen_move.to_col), 'white')
+            # Otherwise, move the white king one square closer.
+            intended_king_target = (wk_r + (1 if bk_r > wk_r else -1 if bk_r < wk_r else 0),
+                                    wk_c + (1 if bk_c > wk_c else -1 if bk_c < wk_c else 0))
+            chosen_move = select_move(white_king, intended_king_target, self.board)
+            if chosen_move is not None:
+                return execute_move(white_king.type, white_king.position,
+                        (chosen_move.to_row, chosen_move.to_col), 'white')
+            
+         # If no legal move was found, return False.
+         #return false
+
     #MAIN LOOP OF THE GAME in this loop we handle all events and update the game
     def update(self):
         for event in pygame.event.get():
@@ -558,7 +674,25 @@ class Game:
                 if self.game_mode is None:
                     continue
                 if event.key == pygame.K_RETURN:
-                    if self.play_move(self.input_text):
+                    if not self.game_mode:
+                        return
+                    if self.game_mode == 'two_rooks' and self.current_turn == 'white':
+                        if self.two_rooks_algorithm():
+                            self.gameMoves.append(self.input_text)
+                            self.error_message = None
+                            self.current_turn = 'black'
+                            self.board.print_board()
+                            self.check_game_result()
+                            if self.use_clock and self.clock is not None:
+                                self.clock.switch_player()
+                            
+                            if self.use_pgn_file:
+                                if not self.load_next_move():
+                                    self.error_message = "End of PGN file reached"
+                            else:
+                                self.input_text = ""
+                            return
+                    elif self.play_move(self.input_text):
                         self.gameMoves.append(self.input_text)
                         self.error_message = None
                         self.current_turn = 'black' if self.current_turn == 'white' else 'white'
@@ -856,6 +990,27 @@ class Board:
         # Cache for piece images
         self.piece_images = {}
         self.load_piece_images()
+    def get_position_representation(self):
+            """
+            Returns a string representation of the board.
+            Each square is represented by two characters:
+            - ".." for an empty square,
+            - Otherwise, the first letter of the piece's color and the first letter of its type.
+            Rows are concatenated with newline characters.
+            """
+            rep = ""
+            for row in range(8):
+                for col in range(8):
+                    piece = self.grid[row][col]
+                    if piece is None:
+                        rep += ".."
+                    else:
+                        # Assume piece.color is a string like 'white' or 'black'
+                        # and piece.type.name gives a string like "KING" or "ROOK".
+                        rep += piece.color[0] + piece.type.name[0]
+                rep += "\n"
+            return rep
+
 
     def load_piece_images(self):
         # Load and scale all piece images once
